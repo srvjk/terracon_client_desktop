@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+	<file>connected.svg</file>
+	<file>not_connected.svg</file>
+    </qresource>
+</RCC>

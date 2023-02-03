@@ -1,0 +1,13 @@
+*~
+~*
+BIN/
+BUILD/
+RUN/
+LIB/
+SDK/DOC/
+TMP/
+*.cmake
+/*.bat
+/*.sh
+
+
