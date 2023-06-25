@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<command opcode="UpdateFromServer"/>
+
+<?xml version="1.0"?>
+<command opcode="waterOn"/>
+
+<?xml version="1.0"?>
+<command opcode="waterOff"/>
+
+<command opcode="serverStatus">
+	lightIntensity
+	waterOn
