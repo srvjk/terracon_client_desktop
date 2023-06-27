@@ -11,24 +11,35 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamAttributes>
 #include <QMessageBox>
+#include <QSettings>
 
 MainWindow::MainWindow(QWidget* parent):
 	QWidget(parent)
 {
+	readSettings();
+
 	QVBoxLayout *mainLayout = new QVBoxLayout();
 
+	// общее
+	QGroupBox* generalGroup = new QGroupBox("");
+	mainLayout->addWidget(generalGroup);
+
+	QVBoxLayout* generalLayout = new QVBoxLayout();
+	generalGroup->setLayout(generalLayout);
+
 	QHBoxLayout* addressLayout = new QHBoxLayout();
-	mainLayout->addLayout(addressLayout);
+	generalLayout->addLayout(addressLayout);
 
 	connectionIndicator = new QSvgWidget();
 	connectionIndicator->load(QString(":/not_connected.svg"));
 	addressLayout->addWidget(connectionIndicator);
 
-	serverAddrEdit = new QLineEdit("192.168.0.108");
+	//serverAddrEdit = new QLineEdit("192.168.0.108");
+	serverAddrEdit = new QLineEdit(serverIp);
 	addressLayout->addWidget(serverAddrEdit);
 	QLabel* commaLabel = new QLabel(":");
 	addressLayout->addWidget(commaLabel);
-	serverPortEdit = new QLineEdit("8001");
+	serverPortEdit = new QLineEdit(serverPort);
 	addressLayout->addWidget(serverPortEdit);
 	serverConnectButton = new QPushButton("Подключение");
 	addressLayout->addWidget(serverConnectButton);
@@ -36,6 +47,14 @@ MainWindow::MainWindow(QWidget* parent):
 	addressLayout->addWidget(updateFromServerButton);
 	serverShutdownButton = new QPushButton("X");
 	addressLayout->addWidget(serverShutdownButton);
+
+	QHBoxLayout* generalButtonsLayout = new QHBoxLayout();
+	generalLayout->addLayout(generalButtonsLayout);
+
+	scriptModeButton = new QPushButton("Режим сценария");
+	generalButtonsLayout->addWidget(scriptModeButton);
+	manualModeButton = new QPushButton("Ручной режим");
+	generalButtonsLayout->addWidget(manualModeButton);
 
 	// свет
 	QGroupBox *lightGroup = new QGroupBox("Свет");
@@ -51,10 +70,13 @@ MainWindow::MainWindow(QWidget* parent):
 	setLightValueButton = new QPushButton("ОК");
 	sliderLayout->addWidget(setLightValueButton);
 
+	QHBoxLayout* lightButtonsLayout = new QHBoxLayout();
+	lightLayout->addLayout(lightButtonsLayout);
+
 	lightOffButton = new QPushButton("Выкл");
-	lightLayout->addWidget(lightOffButton);
-	lightMaxButton = new QPushButton("Максимум");
-	lightLayout->addWidget(lightMaxButton);
+	lightButtonsLayout->addWidget(lightOffButton);
+	lightMaxButton = new QPushButton("Макс");
+	lightButtonsLayout->addWidget(lightMaxButton);
 
 	// вода
 	QGroupBox* waterGroup = new QGroupBox("Вода");
@@ -74,6 +96,8 @@ MainWindow::MainWindow(QWidget* parent):
 	connect(serverConnectButton, SIGNAL(clicked()), this, SLOT(onConnect()));
 	connect(updateFromServerButton, SIGNAL(clicked()), this, SLOT(onUpdateFromServer()));
 	connect(serverShutdownButton, &QPushButton::clicked, this, &MainWindow::onRequestServerShutdown);
+	connect(scriptModeButton, &QPushButton::clicked, this, &MainWindow::onScriptModeButton);
+	connect(manualModeButton, &QPushButton::clicked, this, &MainWindow::onManualModeButton);
 	connect(lightIntensitySlider, SIGNAL(valueChanged(int)), this, SLOT(onLightIntensitySliderValueChanged(int)));
 	connect(setLightValueButton, SIGNAL(clicked()), this, SLOT(onLightSet()));
 	connect(lightOffButton, SIGNAL(clicked()), this, SLOT(onLightOff()));
@@ -137,6 +161,18 @@ void MainWindow::onRequestServerShutdown()
 	}
 }
 
+void MainWindow::onScriptModeButton()
+{
+	QString strCommand = makeCommand_SetScriptMode();
+	sendCommand(strCommand);
+}
+
+void MainWindow::onManualModeButton()
+{
+	QString strCommand = makeCommand_SetManualMode();
+	sendCommand(strCommand);
+}
+
 void MainWindow::onShutdownServer()
 {
 	QString strCommand = makeCommand_ServerShutdown();
@@ -153,18 +189,25 @@ void MainWindow::onLightSet()
 {
 	QString strCommand = makeCommand_SetLightValue();
 	qDebug() << strCommand;
-
 	sendCommand(strCommand);
 }
 
 void MainWindow::onLightOff()
 {
-
+	lightIntensity = 0;
+	updateSettings();
+	QString strCommand = makeCommand_SetLightValue();
+	qDebug() << strCommand;
+	sendCommand(strCommand);
 }
 
 void MainWindow::onLightMax()
 {
-
+	lightIntensity = 99;
+	updateSettings();
+	QString strCommand = makeCommand_SetLightValue();
+	qDebug() << strCommand;
+	sendCommand(strCommand);
 }
 
 void MainWindow::onWaterOn()
@@ -205,9 +248,54 @@ void MainWindow::messageForUser(const QString& message)
 	qDebug() << "INFO: " << message;
 }
 
+void MainWindow::closeEvent(QCloseEvent* e)
+{
+	applySettings();
+	writeSettings();
+}
+
 void MainWindow::sendCommand(const QString& command)
 {
 	webSocket.sendTextMessage(command);
+}
+
+void MainWindow::applySettings()
+{
+	serverIp = serverAddrEdit->text();
+	serverPort = serverPortEdit->text();
+}
+
+void MainWindow::updateSettings()
+{
+	lightIntensitySlider->setValue(lightIntensity);
+}
+
+void MainWindow::readSettings()
+{
+	QSettings settings;
+
+	settings.beginGroup("MainWindow");
+	QString ip = settings.value("serverIp").toString();
+	if (!ip.isEmpty()) {
+		serverIp = ip;
+	}
+
+	QString port = settings.value("serverPort").toString();
+	if (!port.isEmpty()) {
+		serverPort = port;
+	}
+
+	settings.endGroup();
+}
+
+void MainWindow::writeSettings()
+{
+	QSettings settings;
+
+	settings.beginGroup("MainWindow");
+	settings.setValue("serverIp", serverIp);
+	settings.setValue("serverPort", serverPort);
+	settings.endGroup();
 }
 
 QString MainWindow::makeCommand_UpdateFromServer()
@@ -235,6 +323,38 @@ QString MainWindow::makeCommand_ServerShutdown()
 
 	writer.writeStartElement("command");
 	writer.writeAttribute("opcode", "serverShutdown");
+	writer.writeEndElement(); // command
+
+	writer.writeEndElement();
+
+	return strXml;
+}
+
+QString MainWindow::makeCommand_SetScriptMode()
+{
+	QString strXml;
+	QXmlStreamWriter writer(&strXml);
+	writer.setAutoFormatting(true);
+	writer.writeStartDocument();
+
+	writer.writeStartElement("command");
+	writer.writeAttribute("opcode", "setScriptMode");
+	writer.writeEndElement(); // command
+
+	writer.writeEndElement();
+
+	return strXml;
+}
+
+QString MainWindow::makeCommand_SetManualMode()
+{
+	QString strXml;
+	QXmlStreamWriter writer(&strXml);
+	writer.setAutoFormatting(true);
+	writer.writeStartDocument();
+
+	writer.writeStartElement("command");
+	writer.writeAttribute("opcode", "setManualMode");
 	writer.writeEndElement(); // command
 
 	writer.writeEndElement();
